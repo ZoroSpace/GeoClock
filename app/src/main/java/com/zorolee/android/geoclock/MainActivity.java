@@ -81,9 +81,4 @@ public class MainActivity extends Activity {
             e.printStackTrace();
         }
     }
-
-    @Override
-    protected void onRestart() {
-        super.onRestart();
-    }
 }
