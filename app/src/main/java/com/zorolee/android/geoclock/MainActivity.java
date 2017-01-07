@@ -6,6 +6,7 @@ import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
 import android.os.Bundle;
+import android.os.Handler;
 import android.os.Message;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -20,8 +21,6 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.util.List;
-import java.util.logging.Handler;
-import java.util.logging.LogRecord;
 //in this app, the SDK version is SDK21,not SDK23
 public class MainActivity extends Activity {
     private TextView positionTextView;
@@ -54,6 +53,19 @@ public class MainActivity extends Activity {
             e.printStackTrace();
         }
     }
+    private Handler handler = new Handler() {
+        public void handleMessage(Message message) {
+            switch (message.what) {
+                case SHOW_LOCATION:
+                    String currentPosition = (String) message.obj;
+                    positionTextView.setText(currentPosition);
+                    break;
+                default:
+                    break;
+            }
+        }
+
+    };
     private void showLocation(final Location location) {
         new Thread(new Runnable() {
             @Override
@@ -79,7 +91,7 @@ public class MainActivity extends Activity {
                             Message message = new Message();
                             message.what = SHOW_LOCATION;
                             message.obj = address;
-//                            handler.sendMessage(message);
+                            handler.sendMessage(message);
                         }
                     }
                 } catch (Exception e) {
@@ -93,34 +105,7 @@ public class MainActivity extends Activity {
 //        positionTextView.setText("latitude is " + latitude + "\n" + "longitude is " + longitude);
     }
 
-    private Handler handler = new Handler() {
-        @Override
-        public void close() {
 
-        }
-
-        @Override
-        public void flush() {
-
-        }
-
-        @Override
-        public void publish(LogRecord record) {
-
-        }
-
-        public void handleMessage(Message message) {
-            switch (message.what) {
-                case SHOW_LOCATION:
-                    String currentPosition = (String) message.obj;
-                    positionTextView.setText(currentPosition);
-                    break;
-                default:
-                    break;
-            }
-        }
-
-    };
 
     LocationListener locationListener = new LocationListener() {
         @Override
