@@ -5,6 +5,7 @@ import android.app.Service;
 import android.os.Bundle;
 import android.os.Vibrator;
 import android.util.Log;
+import android.widget.Toast;
 
 import com.baidu.location.BDLocation;
 import com.baidu.location.BDLocationListener;
@@ -13,6 +14,7 @@ import com.baidu.location.LocationClient;
 import com.baidu.location.LocationClientOption;
 import com.baidu.location.Poi;
 import com.baidu.mapapi.SDKInitializer;
+import com.baidu.mapapi.map.BaiduMap;
 import com.baidu.mapapi.map.MapView;
 
 import java.util.List;
@@ -22,6 +24,7 @@ public class MainActivity extends Activity {
     LocationClient mLocationClient;
     BDLocationListener myListener = new MyLocationListener();
     MapView mapView;
+    Vibrator mVibrator01; //should add the relevant uses-permission
     NotifyListener mNotifyListener = new NotifyListener();
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -29,18 +32,26 @@ public class MainActivity extends Activity {
         SDKInitializer.initialize(getApplicationContext());
         setContentView(R.layout.activity_main);
         mapView = (MapView)findViewById(R.id.bmapView);
+        mapView.showZoomControls(false);
+        mapView.showScaleControl(false);
+        BaiduMap mBaiduMap = mapView.getMap();//for controlling something of the map
+        mBaiduMap.setMapType(BaiduMap.MAP_TYPE_NORMAL);
         mLocationClient = new LocationClient(getApplicationContext());
         mLocationClient.registerLocationListener(myListener);
         initLocation();
-        mNotifyListener.SetNotifyLocation(30.515701,114.413415,3000000,"bd09ll");
+        mNotifyListener.SetNotifyLocation(30.515701,114.413415,10,"bd09ll");
         mLocationClient.registerNotify(mNotifyListener);
         mLocationClient.start();
+
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
         mapView.onDestroy();
+        mLocationClient.unRegisterLocationListener(myListener);
+        mLocationClient.removeNotifyEvent(mNotifyListener);
+        mLocationClient.stop();
     }
 
     @Override
@@ -61,7 +72,8 @@ public class MainActivity extends Activity {
         option.setCoorType("bd09ll");//可选，默认gcj02，设置返回的定位结果坐标系
         int span=1000;
         option.setScanSpan(span);//可选，默认0，即仅定位一次，设置发起定位请求的间隔需要大于等于1000ms才是有效的
-        option.setIsNeedAddress(true);//可选，设置是否需要地址信息，默认不需要
+        option.setIsNeedAddress(true);//可选，返回的定位结果是否包含地址信息
+        option.setNeedDeviceDirect(true);
         option.setOpenGps(true);//可选，默认false,设置是否使用gps
         option.setLocationNotify(true);//可选，默认false，设置是否当GPS有效时按照1S/1次频率输出GPS结果
         option.setIsNeedLocationDescribe(true);//可选，默认false，设置是否需要位置语义化结果，可以在BDLocation.getLocationDescribe里得到，结果类似于“在北京天安门附近”
@@ -74,9 +86,12 @@ public class MainActivity extends Activity {
 
     class NotifyListener extends BDNotifyListener {
         @Override
-        public void onNotify(BDLocation bdLocation, float v) {
-            Vibrator mVibrator01 = (Vibrator)getApplication().getSystemService(Service.VIBRATOR_SERVICE);
+        public void onNotify(BDLocation bdLocation, float distance) {
+            super.onNotify(bdLocation,distance);
+            Toast.makeText(MainActivity.this,"GeoClock",Toast.LENGTH_SHORT).show();
+            mVibrator01 = (Vibrator)getApplication().getSystemService(Service.VIBRATOR_SERVICE);
             mVibrator01.vibrate(1000);
+
         }
     }
 }
