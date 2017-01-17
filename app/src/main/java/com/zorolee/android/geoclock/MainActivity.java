@@ -1,8 +1,14 @@
 package com.zorolee.android.geoclock;
 
-
 import android.app.Activity;
+import android.content.SharedPreferences;
 import android.os.Bundle;
+import android.text.Editable;
+import android.text.TextWatcher;
+import android.view.View;
+import android.widget.ArrayAdapter;
+import android.widget.AutoCompleteTextView;
+import android.widget.Button;
 
 import com.baidu.location.BDLocation;
 import com.baidu.location.BDLocationListener;
@@ -12,17 +18,24 @@ import com.baidu.mapapi.SDKInitializer;
 import com.baidu.mapapi.map.BaiduMap;
 import com.baidu.mapapi.map.MapStatusUpdateFactory;
 import com.baidu.mapapi.map.MapView;
-import com.baidu.mapapi.map.MyLocationConfiguration;
 import com.baidu.mapapi.map.MyLocationData;
 import com.baidu.mapapi.model.LatLng;
+import com.baidu.mapapi.search.sug.OnGetSuggestionResultListener;
+import com.baidu.mapapi.search.sug.SuggestionResult;
+import com.baidu.mapapi.search.sug.SuggestionSearch;
+import com.baidu.mapapi.search.sug.SuggestionSearchOption;
 
 public class MainActivity extends Activity {
     private MapView mMapView;
     private BaiduMap mBaiduMap;
     private LocationClient mLocationClient;
     private MyLocationListener mMyLocationListener;
-    private MyLocationData mMyLocationData;
+    private AutoCompleteTextView mAutoCompleteTextView;
+    private Button mSearchButton;
+    SuggestionSearch mSuggestionSearch;
+    ArrayAdapter<String> mSuggestionAdapter;
 
+    static int i = 0;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -33,13 +46,42 @@ public class MainActivity extends Activity {
         mBaiduMap = mMapView.getMap();
         mBaiduMap.setMyLocationEnabled(true);
         mBaiduMap.animateMapStatus(MapStatusUpdateFactory.zoomTo(19)); //The accuracy is 20 meters,3~21
+        mSuggestionSearch = SuggestionSearch.newInstance();
         mLocationClient = new LocationClient(getApplicationContext());
         mMyLocationListener = new MyLocationListener();
         mLocationClient.registerLocationListener(mMyLocationListener);
         initLocation();
         mLocationClient.start();
+        mSearchButton = (Button)findViewById(R.id.search_button);
+        mAutoCompleteTextView = (AutoCompleteTextView) findViewById(R.id.edit_search);
+        initAutoComplete("history",mAutoCompleteTextView);
+        OnGetSuggestionResultListener mSuggestionResultListener = new OnGetSuggestionResultListener() {
+            @Override
+            public void onGetSuggestionResult(SuggestionResult suggestionResult) {
+                if (suggestionResult != null && suggestionResult.getAllSuggestions() != null) {
+                    mSuggestionAdapter.clear();
+                    for (SuggestionResult.SuggestionInfo mInfo : suggestionResult.getAllSuggestions()) {
+                        if (mInfo.key != null) {
+                            mSuggestionAdapter.add(mInfo.key);
+                        }
+                    }
+                    mSuggestionAdapter.notifyDataSetChanged();
+                }
+            }
+        };
+        mSuggestionSearch.setOnGetSuggestionResultListener(mSuggestionResultListener);
+        mSearchButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                String mSearchWord = mAutoCompleteTextView.getText().toString();
+                if (mSearchWord != null) {
+                    //TODO
+                }
+                saveHistory("history",mAutoCompleteTextView);
+                mSuggestionSearch.destroy();
+            }
+        });
     }
-
 
     private void initLocation() {
         LocationClientOption option = new LocationClientOption();
@@ -59,6 +101,76 @@ public class MainActivity extends Activity {
         mLocationClient.setLocOption(option);
 
     }
+
+    private void initAutoComplete(String field,AutoCompleteTextView auto) {
+        SharedPreferences sp = getSharedPreferences("network_url", 0);//SharePreferences, a new class
+        String longhistory = sp.getString(field, "");
+        String[] hisArrays = longhistory.split(",");
+        mSuggestionAdapter = new ArrayAdapter<>(this,
+                android.R.layout.simple_dropdown_item_1line, hisArrays);
+        //只保留最近的20条的记录
+        if (hisArrays.length > 20) {
+            String[] newArrays = new String[20];
+            System.arraycopy(hisArrays, 0, newArrays, 0, 20);
+            mSuggestionAdapter = new ArrayAdapter<>(this,
+                    android.R.layout.simple_dropdown_item_1line, newArrays);
+        }
+        auto.setAdapter(mSuggestionAdapter);
+        auto.setDropDownHeight(550);//look
+        auto.setThreshold(1);
+        auto.setCompletionHint("最近的5条记录");
+        auto.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                AutoCompleteTextView view = (AutoCompleteTextView) v;
+                view.showDropDown();
+
+            }
+        });
+        auto.setOnFocusChangeListener(new View.OnFocusChangeListener() {
+            @Override
+            public void onFocusChange(View v, boolean hasFocus) {
+                AutoCompleteTextView view = (AutoCompleteTextView) v;
+                if (hasFocus) {
+                    view.showDropDown();
+                }
+            }
+        });
+        auto.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+
+            }
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+                if (s.length() == 0) {
+                    return;
+                }
+                mSuggestionSearch.requestSuggestion(new SuggestionSearchOption().
+                        keyword(mAutoCompleteTextView.getText().toString()).city("武汉"));
+            }
+
+            @Override
+            public void afterTextChanged(Editable s) {
+                mSuggestionSearch.requestSuggestion(new SuggestionSearchOption().
+                        keyword(mAutoCompleteTextView.getText().toString()).city("武汉"));
+            }
+        });
+
+    }
+
+    private void saveHistory(String field,AutoCompleteTextView auto) {
+        String text = auto.getText().toString();
+        SharedPreferences sp = getSharedPreferences("network_url",0);
+        String longhistory = sp.getString(field,"");
+        if (! longhistory.contains(text + ",")) {
+            StringBuilder sb = new StringBuilder(longhistory);
+            sb.insert(0,text + ",");
+            sp.edit().putString("history",sb.toString()).apply();
+        }
+    }
+
     @Override
     protected void onResume() {
         super.onResume();
@@ -85,14 +197,19 @@ public class MainActivity extends Activity {
         public void onReceiveLocation(BDLocation bdLocation) {
             if (bdLocation != null) {
                 LatLng mLatLng = new LatLng(bdLocation.getLatitude(),bdLocation.getLongitude());
-                mMyLocationData = new MyLocationData.Builder().
+                MyLocationData mMyLocationData = new MyLocationData.Builder().
                         accuracy(bdLocation.getRadius()).
                         latitude(bdLocation.getLatitude()).
-                        longitude(bdLocation.getLongitude()).
-                        direction(bdLocation.getDirection()).build();
+                        longitude(bdLocation.getLongitude()).build();
+//                        direction(bdLocation.getDirection()).
                 mBaiduMap.setMyLocationData(mMyLocationData);
-                mBaiduMap.setMyLocationConfigeration(new MyLocationConfiguration(MyLocationConfiguration.LocationMode.FOLLOWING, true, null,0X99CCFF,0X99CCFF));
-                mBaiduMap.animateMapStatus(MapStatusUpdateFactory.newLatLng(mLatLng));
+//                mBaiduMap.setMyLocationConfigeration(new MyLocationConfiguration
+//                        (MyLocationConfiguration.LocationMode.FOLLOWING, true, null,0X99CCFF,0X99CCFF));
+                if (i == 0) {
+                    mBaiduMap.animateMapStatus(MapStatusUpdateFactory.newLatLng(mLatLng));
+                    i++;
+                }
+
             }
         }
     }

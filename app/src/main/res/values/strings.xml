@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">GeoClock</string>
+    <string name="search_button">搜索</string>
+    <string name="edit_words">想去哪儿？</string>
 </resources>
