@@ -1,14 +1,17 @@
 package com.zorolee.android.geoclock;
 
 import android.app.Activity;
-import android.content.SharedPreferences;
+import android.app.AlertDialog;
+import android.content.DialogInterface;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.TextWatcher;
+import android.util.Log;
 import android.view.View;
 import android.widget.ArrayAdapter;
 import android.widget.AutoCompleteTextView;
 import android.widget.Button;
+import android.widget.Toast;
 
 import com.baidu.location.BDLocation;
 import com.baidu.location.BDLocationListener;
@@ -16,24 +19,42 @@ import com.baidu.location.LocationClient;
 import com.baidu.location.LocationClientOption;
 import com.baidu.mapapi.SDKInitializer;
 import com.baidu.mapapi.map.BaiduMap;
+import com.baidu.mapapi.map.BitmapDescriptor;
+import com.baidu.mapapi.map.BitmapDescriptorFactory;
+import com.baidu.mapapi.map.MapStatus;
+import com.baidu.mapapi.map.MapStatusUpdate;
 import com.baidu.mapapi.map.MapStatusUpdateFactory;
 import com.baidu.mapapi.map.MapView;
+import com.baidu.mapapi.map.Marker;
+import com.baidu.mapapi.map.MarkerOptions;
 import com.baidu.mapapi.map.MyLocationData;
 import com.baidu.mapapi.model.LatLng;
+import com.baidu.mapapi.search.core.SearchResult;
+import com.baidu.mapapi.search.geocode.GeoCodeOption;
+import com.baidu.mapapi.search.geocode.GeoCodeResult;
+import com.baidu.mapapi.search.geocode.GeoCoder;
+import com.baidu.mapapi.search.geocode.OnGetGeoCoderResultListener;
+import com.baidu.mapapi.search.geocode.ReverseGeoCodeResult;
 import com.baidu.mapapi.search.sug.OnGetSuggestionResultListener;
 import com.baidu.mapapi.search.sug.SuggestionResult;
 import com.baidu.mapapi.search.sug.SuggestionSearch;
 import com.baidu.mapapi.search.sug.SuggestionSearchOption;
 
-public class MainActivity extends Activity {
+public class MainActivity extends Activity implements OnGetSuggestionResultListener {
     private MapView mMapView;
     private BaiduMap mBaiduMap;
     private LocationClient mLocationClient;
     private MyLocationListener mMyLocationListener;
     private AutoCompleteTextView mAutoCompleteTextView;
     private Button mSearchButton;
-    SuggestionSearch mSuggestionSearch;
-    ArrayAdapter<String> mSuggestionAdapter;
+    private static boolean mShowDown = true;
+    private SuggestionSearch mSuggestionSearch;
+    public ArrayAdapter<String> mSuggestionAdapter;
+    private GeoCoder mGeoCoder;
+    private OnGetGeoCoderResultListener mGeoCoderResultListener;
+    private LatLng mTargetLatLng;
+    private MarkerOptions mTargetMarkerOptions;
+    private Marker mTargetMarker;
 
     static int i = 0;
     @Override
@@ -54,35 +75,94 @@ public class MainActivity extends Activity {
         mLocationClient.start();
         mSearchButton = (Button)findViewById(R.id.search_button);
         mAutoCompleteTextView = (AutoCompleteTextView) findViewById(R.id.edit_search);
-        initAutoComplete("history",mAutoCompleteTextView);
-        OnGetSuggestionResultListener mSuggestionResultListener = new OnGetSuggestionResultListener() {
+        mGeoCoder = GeoCoder.newInstance();
+        mGeoCoderResultListener = new OnGetGeoCoderResultListener() {
             @Override
-            public void onGetSuggestionResult(SuggestionResult suggestionResult) {
-                if (suggestionResult != null && suggestionResult.getAllSuggestions() != null) {
-                    mSuggestionAdapter.clear();
-                    for (SuggestionResult.SuggestionInfo mInfo : suggestionResult.getAllSuggestions()) {
-                        if (mInfo.key != null) {
-                            mSuggestionAdapter.add(mInfo.key);
-                        }
-                    }
-                    mSuggestionAdapter.notifyDataSetChanged();
+            public void onGetGeoCodeResult(GeoCodeResult mGeoCodeResult) {
+
+                if (mGeoCodeResult == null || mGeoCodeResult.error != SearchResult.ERRORNO.NO_ERROR) {
+
+                }
+                mTargetLatLng =  mGeoCodeResult.getLocation();
+                if (mTargetLatLng != null) {
+                    BitmapDescriptor mTargetBitMap = BitmapDescriptorFactory.fromResource(R.drawable.m_bitmap);
+                    mTargetMarkerOptions = new MarkerOptions().position(mTargetLatLng)
+                            .icon(mTargetBitMap)
+                            .zIndex(9).draggable(false);
+                    mTargetMarker = (Marker) mBaiduMap.addOverlay(mTargetMarkerOptions);
+                    Log.d("Main",mTargetLatLng.latitude + "," + mTargetLatLng.longitude);
+                } else {
+                    Toast.makeText(MainActivity.this,"输入地址有误",Toast.LENGTH_SHORT).show();//TODO 很多情况下，得不出正确的搜索结果
                 }
             }
+            @Override
+            public void onGetReverseGeoCodeResult(ReverseGeoCodeResult mReverseGeoCodeResult) {
+
+            }
         };
-        mSuggestionSearch.setOnGetSuggestionResultListener(mSuggestionResultListener);
+        mGeoCoder.setOnGetGeoCodeResultListener(mGeoCoderResultListener);
+
+        initAutoComplete(mAutoCompleteTextView);
+
+        mSuggestionSearch.setOnGetSuggestionResultListener(this);
         mSearchButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
+                mBaiduMap.clear();//删除上次查询所有的Overlay
                 String mSearchWord = mAutoCompleteTextView.getText().toString();
                 if (mSearchWord != null) {
-                    //TODO
-                }
-                saveHistory("history",mAutoCompleteTextView);
-                mSuggestionSearch.destroy();
+                    mGeoCoder.geocode(new GeoCodeOption().city("武汉").address(mSearchWord));
+                    MapStatus mMapStatus = new MapStatus.Builder().target(mTargetLatLng).zoom(19).build();
+                    MapStatusUpdate mMapStatusUpdate = MapStatusUpdateFactory.newMapStatus(mMapStatus);
+                    mBaiduMap.setMapStatus(mMapStatusUpdate);
+
+
+
+                    Log.d("Main",mSearchWord);
+
+                }//TO BE FIXED, need press SearchButton twice, to update the status.
             }
         });
+        mBaiduMap.setOnMarkerClickListener(new BaiduMap.OnMarkerClickListener() {
+            @Override
+            public boolean onMarkerClick(Marker mMarker) {
+                Log.d("Main","marker was touched");
+                AlertDialog.Builder mBuilder = new AlertDialog.Builder(MainActivity.this);
+                mBuilder.setMessage("离此地距离约200米处提醒？");
+                mBuilder.setTitle("提示");
+                mBuilder.setPositiveButton("确认", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        // TODO: 17-1-22,设置，如果用户所在地距离目的地200米，则振动提醒。
+                        dialog.dismiss();
+                    }
+                });
+                mBuilder.setNegativeButton("取消", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        dialog.dismiss();
+                    }
+                });
+                mBuilder.create().show();
+                return false;
+                //开发者需要根据marker来判断相应哪个对象的点击事件
+            }
+        });
+
     }
 
+    @Override
+    public void onGetSuggestionResult(SuggestionResult suggestionResult) {
+        if (suggestionResult != null && suggestionResult.getAllSuggestions() != null) {
+            mSuggestionAdapter.clear();
+            for (SuggestionResult.SuggestionInfo mInfo : suggestionResult.getAllSuggestions()) {
+                if (mInfo.key != null) {
+                    mSuggestionAdapter.add(mInfo.key);
+                }
+            }
+            mSuggestionAdapter.notifyDataSetChanged();//here is the problem
+        }
+    }
     private void initLocation() {
         LocationClientOption option = new LocationClientOption();
         option.setLocationMode(LocationClientOption.LocationMode.Hight_Accuracy);//可选，默认高精度，设置定位模式，高精度，低功耗，仅设备
@@ -102,37 +182,21 @@ public class MainActivity extends Activity {
 
     }
 
-    private void initAutoComplete(String field,AutoCompleteTextView auto) {
-        SharedPreferences sp = getSharedPreferences("network_url", 0);//SharePreferences, a new class
-        String longhistory = sp.getString(field, "");
-        String[] hisArrays = longhistory.split(",");
+    private void initAutoComplete(AutoCompleteTextView auto) {
         mSuggestionAdapter = new ArrayAdapter<>(this,
-                android.R.layout.simple_dropdown_item_1line, hisArrays);
-        //只保留最近的20条的记录
-        if (hisArrays.length > 20) {
-            String[] newArrays = new String[20];
-            System.arraycopy(hisArrays, 0, newArrays, 0, 20);
-            mSuggestionAdapter = new ArrayAdapter<>(this,
-                    android.R.layout.simple_dropdown_item_1line, newArrays);
-        }
+                android.R.layout.simple_dropdown_item_1line);
         auto.setAdapter(mSuggestionAdapter);
-        auto.setDropDownHeight(550);//look
+        auto.setDropDownHeight(550);
         auto.setThreshold(1);
-        auto.setCompletionHint("最近的5条记录");
         auto.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 AutoCompleteTextView view = (AutoCompleteTextView) v;
-                view.showDropDown();
-
-            }
-        });
-        auto.setOnFocusChangeListener(new View.OnFocusChangeListener() {
-            @Override
-            public void onFocusChange(View v, boolean hasFocus) {
-                AutoCompleteTextView view = (AutoCompleteTextView) v;
-                if (hasFocus) {
+                if (mShowDown == true) {
                     view.showDropDown();
+                    mShowDown = false;
+                } else {
+                    mShowDown = true;
                 }
             }
         });
@@ -148,28 +212,14 @@ public class MainActivity extends Activity {
                     return;
                 }
                 mSuggestionSearch.requestSuggestion(new SuggestionSearchOption().
-                        keyword(mAutoCompleteTextView.getText().toString()).city("武汉"));
+                        keyword(s.toString()).city("武汉"));
             }
-
             @Override
             public void afterTextChanged(Editable s) {
-                mSuggestionSearch.requestSuggestion(new SuggestionSearchOption().
-                        keyword(mAutoCompleteTextView.getText().toString()).city("武汉"));
             }
         });
-
     }
 
-    private void saveHistory(String field,AutoCompleteTextView auto) {
-        String text = auto.getText().toString();
-        SharedPreferences sp = getSharedPreferences("network_url",0);
-        String longhistory = sp.getString(field,"");
-        if (! longhistory.contains(text + ",")) {
-            StringBuilder sb = new StringBuilder(longhistory);
-            sb.insert(0,text + ",");
-            sp.edit().putString("history",sb.toString()).apply();
-        }
-    }
 
     @Override
     protected void onResume() {
@@ -185,12 +235,16 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        mSuggestionSearch.destroy();
+        mGeoCoder.destroy();
         mLocationClient.unRegisterLocationListener(mMyLocationListener);
         mLocationClient.stop();
         mMapView.onDestroy();
         super.onDestroy();
 //        mLocationClient.removeNotifyEvent(mNotifyListener);
     }
+
+
 
     class MyLocationListener implements BDLocationListener {
         @Override
@@ -201,7 +255,6 @@ public class MainActivity extends Activity {
                         accuracy(bdLocation.getRadius()).
                         latitude(bdLocation.getLatitude()).
                         longitude(bdLocation.getLongitude()).build();
-//                        direction(bdLocation.getDirection()).
                 mBaiduMap.setMyLocationData(mMyLocationData);
 //                mBaiduMap.setMyLocationConfigeration(new MyLocationConfiguration
 //                        (MyLocationConfiguration.LocationMode.FOLLOWING, true, null,0X99CCFF,0X99CCFF));
@@ -213,6 +266,56 @@ public class MainActivity extends Activity {
             }
         }
     }
+
+    //    private void initAutoComplete(String field,AutoCompleteTextView auto) {
+//        SharedPreferences sp = getSharedPreferences("network_url", 0);//SharePreferences, a new class
+//        String longhistory = sp.getString(field, "");
+//        String[] hisArrays = longhistory.split(",");
+//        mSuggestionAdapter = new ArrayAdapter<>(this,
+//                android.R.layout.simple_dropdown_item_1line, hisArrays);
+//        //只保留最近的20条的记录
+//        if (hisArrays.length > 20) {
+//            String[] newArrays = new String[20];
+//            System.arraycopy(hisArrays, 0, newArrays, 0, 20);
+//            mSuggestionAdapter = new ArrayAdapter<>(this,
+//                    android.R.layout.simple_dropdown_item_1line, newArrays);
+//        }
+//        auto.setAdapter(mSuggestionAdapter);
+//        auto.setDropDownHeight(550);//look
+//        auto.setThreshold(1);
+//        auto.setCompletionHint("最近的5条记录");
+//        auto.setOnClickListener(new View.OnClickListener() {
+//            @Override
+//            public void onClick(View v) {
+//                AutoCompleteTextView view = (AutoCompleteTextView) v;
+//                if (mShowDown == true) {
+//                    view.showDropDown();
+//                    mShowDown = false;
+//                } else {
+//                    mShowDown = true;
+//                }
+//            }
+//        });
+//
+//        auto.addTextChangedListener(new TextWatcher() {
+//            @Override
+//            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+//
+//            }
+//
+//            @Override
+//            public void onTextChanged(CharSequence s, int start, int before, int count) {
+//            }
+//            @Override
+//            public void afterTextChanged(Editable s) {
+//                if (s.length() == 0) {
+//                    return;
+//                }
+//                mSuggestionSearch.requestSuggestion(new SuggestionSearchOption().
+//                        keyword(mAutoCompleteTextView.getText().toString()).city("武汉"));
+//            }
+//        });
+//    }
 }
 
 
