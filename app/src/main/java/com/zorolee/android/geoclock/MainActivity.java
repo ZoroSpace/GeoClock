@@ -2,8 +2,10 @@ package com.zorolee.android.geoclock;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.Service;
 import android.content.DialogInterface;
 import android.os.Bundle;
+import android.os.Vibrator;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.util.Log;
@@ -15,6 +17,7 @@ import android.widget.Toast;
 
 import com.baidu.location.BDLocation;
 import com.baidu.location.BDLocationListener;
+import com.baidu.location.BDNotifyListener;
 import com.baidu.location.LocationClient;
 import com.baidu.location.LocationClientOption;
 import com.baidu.mapapi.SDKInitializer;
@@ -55,6 +58,8 @@ public class MainActivity extends Activity implements OnGetSuggestionResultListe
     private LatLng mTargetLatLng;
     private MarkerOptions mTargetMarkerOptions;
     private Marker mTargetMarker;
+    private Vibrator mVibrator;
+    private NotifyListener mNotifyListener = new NotifyListener();
 
     static int i = 0;
     @Override
@@ -110,16 +115,12 @@ public class MainActivity extends Activity implements OnGetSuggestionResultListe
             public void onClick(View v) {
                 mBaiduMap.clear();//删除上次查询所有的Overlay
                 String mSearchWord = mAutoCompleteTextView.getText().toString();
-                if (mSearchWord != null) {
+                {
                     mGeoCoder.geocode(new GeoCodeOption().city("武汉").address(mSearchWord));
                     MapStatus mMapStatus = new MapStatus.Builder().target(mTargetLatLng).zoom(19).build();
                     MapStatusUpdate mMapStatusUpdate = MapStatusUpdateFactory.newMapStatus(mMapStatus);
                     mBaiduMap.setMapStatus(mMapStatusUpdate);
-
-
-
                     Log.d("Main",mSearchWord);
-
                 }//TO BE FIXED, need press SearchButton twice, to update the status.
             }
         });
@@ -128,12 +129,13 @@ public class MainActivity extends Activity implements OnGetSuggestionResultListe
             public boolean onMarkerClick(Marker mMarker) {
                 Log.d("Main","marker was touched");
                 AlertDialog.Builder mBuilder = new AlertDialog.Builder(MainActivity.this);
-                mBuilder.setMessage("离此地距离约200米处提醒？");
+                mBuilder.setMessage("离此地距离约500米处提醒？");
                 mBuilder.setTitle("提示");
                 mBuilder.setPositiveButton("确认", new DialogInterface.OnClickListener() {
                     @Override
                     public void onClick(DialogInterface dialog, int which) {
-                        // TODO: 17-1-22,设置，如果用户所在地距离目的地200米，则振动提醒。
+                        mNotifyListener.SetNotifyLocation(mTargetLatLng.latitude,mTargetLatLng.longitude,500,"bd09ll");
+                        mLocationClient.registerNotify(mNotifyListener);
                         dialog.dismiss();
                     }
                 });
@@ -192,7 +194,7 @@ public class MainActivity extends Activity implements OnGetSuggestionResultListe
             @Override
             public void onClick(View v) {
                 AutoCompleteTextView view = (AutoCompleteTextView) v;
-                if (mShowDown == true) {
+                if (mShowDown) {
                     view.showDropDown();
                     mShowDown = false;
                 } else {
@@ -237,6 +239,7 @@ public class MainActivity extends Activity implements OnGetSuggestionResultListe
     protected void onDestroy() {
         mSuggestionSearch.destroy();
         mGeoCoder.destroy();
+        mLocationClient.removeNotifyEvent(mNotifyListener);
         mLocationClient.unRegisterLocationListener(mMyLocationListener);
         mLocationClient.stop();
         mMapView.onDestroy();
@@ -264,6 +267,16 @@ public class MainActivity extends Activity implements OnGetSuggestionResultListe
                 }
 
             }
+        }
+    }
+    class NotifyListener extends BDNotifyListener {
+        @Override
+        public void onNotify(BDLocation bdLocation, float distance) {
+            super.onNotify(bdLocation,distance);
+            Toast.makeText(MainActivity.this,"像我这么屌的还有75个",Toast.LENGTH_SHORT).show();
+            mVibrator = (Vibrator)getApplication().getSystemService(Service.VIBRATOR_SERVICE);
+            mVibrator.vibrate(1000);
+
         }
     }
 
